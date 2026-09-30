@@ -1,2 +1,2 @@
 # RoadBuddy-
-Group members: Aiden Funk,
+Group members: Aiden Funk, Shrey Joshi
