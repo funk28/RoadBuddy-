@@ -2,6 +2,7 @@
 
 ## Repo Architecture
 
+```text
 repo/
 ├── android/                 # Gradle multi-module project
 │   ├── app/
@@ -12,7 +13,7 @@ repo/
 ├── backend/                 # Flask
 │   ├── pyproject.toml
 │   ├── src/app/
-│   │   ├── \_\_init\_\_.py  # create_app()
+│   │   ├── __init__.py      # create_app()
 │   │   ├── api/             # blueprints
 │   │   └── services/        # maps.py, vlm_client.py
 │   └── tests/
@@ -25,6 +26,7 @@ repo/
 ├── .github/workflows/       # CI per folder
 ├── .env.example
 └── README.md
+```
 
 Descriptions:
 
