@@ -28,7 +28,7 @@ The navigation route itself is **mocked** for now: a hardcoded polyline, with no
 
 | Field | Answer |
 |---|---|
-| What it does | Uploads a flagged frame and its GPS location. The server classifies it with the VLM, merges it with any existing hazard within ~15 m, and stores it in PostGIS. |
+| What it does | Uploads a flagged frame and its GPS location. The server classifies it with the VLM, then merges it with the nearest live hazard of the same type within `HAZARD_MATCH_RADIUS_M` (default 25 m) and stores it in PostGIS. A match keeps that hazard, increments `sighting_count`, sets `last_confirmed_at` to the new sighting, and sets expiry to the sighting time plus `HAZARD_TTL_HOURS` (default 24). Severity stays as first stored. `expired` and `removed` hazards do not match. |
 | Type | Python backend + database (calls the ML model) |
 | Endpoint | `/v1/detections` |
 | Method | `POST` (multipart: `image` JPEG + `meta` JSON) |

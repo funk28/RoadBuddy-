@@ -1,2 +1,8 @@
 # Local Claude Code workspace (not shared)
 .claude/
+
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.venv/
+venv/
