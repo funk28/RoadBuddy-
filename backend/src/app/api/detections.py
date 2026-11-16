@@ -37,18 +37,35 @@ def _read_payload() -> dict | tuple:
     return payload
 
 
-def _required_report(payload: dict, classification) -> IncomingReport | tuple:
-    client_detection_id = payload.get("client_detection_id")
+def _validated_coordinates(payload: dict) -> dict[str, float] | tuple:
+    if "location" not in payload:
+        return _error("missing_field", "location is required", 400)
     location = payload.get("location")
+    if not isinstance(location, dict):
+        return _error("invalid_field", "location must be an object", 400)
+
+    coordinates = {}
+    for field, limit in (("lat", 90), ("lng", 180)):
+        if field not in location:
+            return _error("missing_field", f"location.{field} is required", 400)
+        value = location[field]
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return _error("invalid_field", f"location.{field} must be a number", 400)
+        # This also rejects NaN and infinities, before converting large integers.
+        if not -limit <= value <= limit:
+            return _error(
+                "invalid_field",
+                f"location.{field} must be finite and between {-limit} and {limit}",
+                400,
+            )
+        coordinates[field] = float(value)
+    return coordinates
+
+
+def _required_report(payload: dict, classification, coordinates: dict[str, float]) -> IncomingReport | tuple:
+    client_detection_id = payload.get("client_detection_id")
     if not isinstance(client_detection_id, str) or not client_detection_id:
         return _error("missing_field", "client_detection_id is required", 400)
-    if not isinstance(location, dict) or "lat" not in location or "lng" not in location:
-        return _error("missing_field", "location.lat and location.lng are required", 400)
-    try:
-        lat = float(location["lat"])
-        lng = float(location["lng"])
-    except (TypeError, ValueError):
-        return _error("invalid_field", "location.lat and location.lng must be numbers", 400)
 
     captured_raw = payload.get("captured_at")
     if captured_raw is None:
@@ -64,8 +81,8 @@ def _required_report(payload: dict, classification) -> IncomingReport | tuple:
     return IncomingReport(
         client_detection_id=client_detection_id,
         captured_at=captured_at,
-        lat=lat,
-        lng=lng,
+        lat=coordinates["lat"],
+        lng=coordinates["lng"],
         is_hazard=classification.is_hazard,
         hazard_type=classification.hazard_type,
         severity=classification.severity,
@@ -100,6 +117,10 @@ def create_detection():
     if isinstance(payload, tuple):
         return payload
 
+    coordinates = _validated_coordinates(payload)
+    if isinstance(coordinates, tuple):
+        return coordinates
+
     hint = {
         "hazard_type": payload.get("hazard_type"),
         "severity": payload.get("severity"),
@@ -110,7 +131,7 @@ def create_detection():
     image = request.files["image"].read() if "image" in request.files else None
     classification = current_app.extensions["hazard_classifier"].classify(image, hint)
 
-    incoming = _required_report(payload, classification)
+    incoming = _required_report(payload, classification, coordinates)
     if isinstance(incoming, tuple):
         return incoming
 
