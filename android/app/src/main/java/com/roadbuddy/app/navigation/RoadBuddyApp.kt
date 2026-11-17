@@ -8,13 +8,16 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.roadbuddy.core.data.DriveSettingsRepository
 import com.roadbuddy.core.ui.navigation.RoadBuddyBottomBar
 import com.roadbuddy.feature.settings.SettingsRoute
 
@@ -27,6 +30,8 @@ private object Routes {
 
 @Composable
 fun RoadBuddyApp() {
+    val context = LocalContext.current.applicationContext
+    val settingsRepository = remember(context) { DriveSettingsRepository(context) }
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -64,7 +69,7 @@ fun RoadBuddyApp() {
                 PlaceholderScreen("Reports")
             }
             composable(Routes.SETTINGS) {
-                SettingsRoute()
+                SettingsRoute(settingsRepository)
             }
         }
     }

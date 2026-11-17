@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,15 +20,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +49,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.roadbuddy.core.data.DriveSettingsRepository
+import com.roadbuddy.core.model.DriveSettings
+import java.io.IOException
+import kotlinx.coroutines.launch
 
 private val SecondaryTextColor = Color(0xFF5D687A)
 private val MutedTextColor = Color(0xFF8A94A5)
@@ -51,15 +61,29 @@ private val PermissionDeniedColor = Color(0xFFB3261E)
 private val ButtonOutlineColor = Color(0xFFCBD3E0)
 
 @Composable
-fun SettingsRoute() {
+fun SettingsRoute(repository: DriveSettingsRepository) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    var audibleAlerts by rememberSaveable { mutableStateOf(true) }
-    var detectionEnabled by rememberSaveable { mutableStateOf(true) }
-    var suggestReroutes by rememberSaveable { mutableStateOf(true) }
     var locationAllowed by remember { mutableStateOf(context.hasLocationPermission()) }
     var cameraAllowed by remember { mutableStateOf(context.hasCameraPermission()) }
+    var loadAttempt by remember { mutableIntStateOf(0) }
+    var loadState by remember(repository) {
+        mutableStateOf<SettingsLoadState>(SettingsLoadState.Loading)
+    }
+
+    LaunchedEffect(repository, loadAttempt) {
+        loadState = SettingsLoadState.Loading
+        try {
+            repository.settings.collect { settings ->
+                loadState = SettingsLoadState.Ready(settings)
+            }
+        } catch (_: IOException) {
+            loadState = SettingsLoadState.Failed
+        }
+    }
 
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -83,45 +107,94 @@ fun SettingsRoute() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    SettingsScreen(
-        audibleAlerts = audibleAlerts,
-        onAudibleAlertsChange = { audibleAlerts = it },
-        detectionEnabled = detectionEnabled,
-        onDetectionEnabledChange = { detectionEnabled = it },
-        suggestReroutes = suggestReroutes,
-        onSuggestReroutesChange = { suggestReroutes = it },
-        locationAllowed = locationAllowed,
-        onLocationClick = {
-            if (!locationAllowed) {
-                locationPermissionLauncher.launch(
-                    arrayOf(
-                        Manifest.permission.ACCESS_COARSE_LOCATION,
-                        Manifest.permission.ACCESS_FINE_LOCATION,
-                    ),
+    fun updateSettings(update: suspend () -> Unit) {
+        coroutineScope.launch {
+            try {
+                update()
+            } catch (_: IOException) {
+                snackbarHostState.showSnackbar("Couldn't save settings. Try again.")
+            }
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        when (val state = loadState) {
+            SettingsLoadState.Loading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            SettingsLoadState.Failed -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text("Couldn't load drive settings.")
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(onClick = { loadAttempt++ }) {
+                        Text("Retry")
+                    }
+                }
+            }
+            is SettingsLoadState.Ready -> {
+                SettingsScreen(
+                    modifier = Modifier.fillMaxSize(),
+                    settings = state.settings,
+                    onAudibleAlertsChange = { enabled ->
+                        updateSettings { repository.setAudibleAlerts(enabled) }
+                    },
+                    onDetectionEnabledChange = { enabled ->
+                        updateSettings { repository.setDetectionEnabled(enabled) }
+                    },
+                    onSuggestReroutesChange = { enabled ->
+                        updateSettings { repository.setSuggestReroutes(enabled) }
+                    },
+                    locationAllowed = locationAllowed,
+                    onLocationClick = {
+                        if (!locationAllowed) {
+                            locationPermissionLauncher.launch(
+                                arrayOf(
+                                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                                    Manifest.permission.ACCESS_FINE_LOCATION,
+                                ),
+                            )
+                        }
+                    },
+                    cameraAllowed = cameraAllowed,
+                    onCameraClick = {
+                        if (!cameraAllowed) {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    },
+                    onReset = { updateSettings { repository.reset() } },
                 )
             }
-        },
-        cameraAllowed = cameraAllowed,
-        onCameraClick = {
-            if (!cameraAllowed) {
-                cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-            }
-        },
-        onReset = {
-            audibleAlerts = true
-            detectionEnabled = true
-            suggestReroutes = true
-        },
-    )
+        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+}
+
+private sealed interface SettingsLoadState {
+    data object Loading : SettingsLoadState
+    data object Failed : SettingsLoadState
+    data class Ready(val settings: DriveSettings) : SettingsLoadState
 }
 
 @Composable
 private fun SettingsScreen(
-    audibleAlerts: Boolean,
+    modifier: Modifier,
+    settings: DriveSettings,
     onAudibleAlertsChange: (Boolean) -> Unit,
-    detectionEnabled: Boolean,
     onDetectionEnabledChange: (Boolean) -> Unit,
-    suggestReroutes: Boolean,
     onSuggestReroutesChange: (Boolean) -> Unit,
     locationAllowed: Boolean,
     onLocationClick: () -> Unit,
@@ -130,7 +203,7 @@ private fun SettingsScreen(
     onReset: () -> Unit,
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(start = 14.dp, top = 26.dp, end = 14.dp, bottom = 18.dp),
@@ -149,20 +222,20 @@ private fun SettingsScreen(
         SettingsToggleRow(
             title = "Audible hazard alerts",
             description = "Spoken warnings for hazards ahead",
-            checked = audibleAlerts,
+            checked = settings.audibleAlerts,
             onCheckedChange = onAudibleAlertsChange,
         )
         Spacer(Modifier.height(27.dp))
         SettingsToggleRow(
             title = "Road hazard detection",
             description = "Uses the rear camera while navigating",
-            checked = detectionEnabled,
+            checked = settings.detectionEnabled,
             onCheckedChange = onDetectionEnabledChange,
         )
         Spacer(Modifier.height(28.dp))
         SettingsToggleRow(
             title = "Suggest reroutes for severe hazards",
-            checked = suggestReroutes,
+            checked = settings.suggestReroutes,
             onCheckedChange = onSuggestReroutesChange,
         )
 
