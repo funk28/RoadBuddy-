@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -91,6 +92,32 @@ class DriveSettingsRepositoryTest {
             )
         } finally {
             secondScope.cancel()
+        }
+    }
+
+    @Test
+    fun frameCaptureRequiresAnActiveSessionAndDetectionSetting() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        try {
+            val repository = newRepository(scope)
+            val gate = DriveSessionGate(repository)
+
+            assertFalse(gate.frameCaptureActive.first())
+
+            gate.startSession()
+            assertTrue(gate.frameCaptureActive.first())
+
+            repository.setDetectionEnabled(false)
+            assertFalse(gate.frameCaptureActive.first())
+            assertFalse(repository.detectionUploadsEnabled.first())
+
+            repository.setDetectionEnabled(true)
+            assertTrue(gate.frameCaptureActive.first())
+
+            gate.stopSession()
+            assertFalse(gate.frameCaptureActive.first())
+        } finally {
+            scope.cancel()
         }
     }
 

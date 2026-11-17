@@ -18,6 +18,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.roadbuddy.core.data.DriveSettingsRepository
+import com.roadbuddy.core.data.DriveSessionGate
 import com.roadbuddy.core.ui.navigation.RoadBuddyBottomBar
 import com.roadbuddy.feature.settings.SettingsRoute
 
@@ -32,6 +33,8 @@ private object Routes {
 fun RoadBuddyApp() {
     val context = LocalContext.current.applicationContext
     val settingsRepository = remember(context) { DriveSettingsRepository(context) }
+    val driveSessionGate = remember(settingsRepository) { DriveSessionGate(settingsRepository) }
+    val driveCameraRuntime = rememberDriveCameraRuntime(driveSessionGate)
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -60,7 +63,7 @@ fun RoadBuddyApp() {
             modifier = Modifier.padding(contentPadding),
         ) {
             composable(Routes.MAP) {
-                PlaceholderScreen("Map")
+                DriveSessionScreen(driveSessionGate, driveCameraRuntime)
             }
             composable(Routes.HAZARDS) {
                 PlaceholderScreen("Hazards")
