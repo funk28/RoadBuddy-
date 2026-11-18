@@ -36,8 +36,9 @@ secrets.properties will be where the Google Maps API key is stored
 directory for blueprints, and services directory of logic pertaining to the
 mapping services and vlm classifier
 - vlm: this will hold the vlm classifier
-- shared/openapi.yaml: the API contract between the app and the backend,
-possibly adding an API contract between the VLM and the backend
+- shared/openapi.yaml: the API contract between the app and the backend
+(OpenAPI 3.1), which also describes the VLM classifier's input and output
+schemas
 - docs: where this documentation lives
 - .github/workflows: CI workflow configurations
 - .env.example: Lists every environment variable the project needs
@@ -47,7 +48,7 @@ Sources:
 - <https://developer.android.com/topic/modularization>
 - <https://flask.palletsprojects.com/tutorial>
 - <https://packaging.python.org/discussions/src-layout-vs-flat-layout/>
-- <https://developer.google.com/maps/documentation/android-sdk/secrets-gradle-plugin>
+- <https://developers.google.com/maps/documentation/android-sdk/secrets-gradle-plugin>
 
 ## Branching Model
 
@@ -76,6 +77,7 @@ Areas:
 - backend
 - vlm
 - mapping
+- docs
 
 Rules:
 
@@ -202,3 +204,102 @@ and auto-deleting head branches.
 each folder to its area owners so reviewers are requested automatically.
 - The team reviews this policy at the end of each sprint and changes it by
 consensus. Policy changes are made through a PR like any other change.
+
+## Project Board Workflow
+
+All work is tracked as GitHub issues on the team's project board
+(<https://github.com/users/funk28/projects/1>), which is linked to this
+repository. Each issue has a Status, Start date, Target date, Track, and
+Sprint, plus a Sprint milestone and area labels (android, backend, vlm,
+mapping, qa, verification, documentation).
+
+### Creating an Issue
+
+- Anyone can open an issue for new work, a bug, or a question that needs a
+decision.
+- Every issue gets a short title, a **Scope** checklist of what has to be done,
+and a **Done when** statement that makes it clear when the issue can be closed.
+- Add the area label(s), the Sprint milestone, and the Track, and set an
+assignee once someone owns the work.
+- Large pieces of work are split into issues small enough to finish within one
+sprint.
+
+### Status Columns
+
+Issues move across the board from left to right:
+
+```text
+Todo → In Progress → In Review → Done
+```
+
+| Status | Meaning | Who moves it, and when |
+|---|---|---|
+| **Todo** | Planned, but no one has started. New issues start here. | Set when the issue is created or added to a sprint. |
+| **In Progress** | Someone is actively working on it on a feature branch. | The assignee moves it when they create the branch and start work, and sets the Start date. |
+| **In Review** | A pull request is open and ready for review. | The assignee moves it when the PR is marked "Ready for review". The PR links the issue (e.g. `Closes #12`). |
+| **Done** | The PR is merged into main and the "Done when" criteria are met. | Moves automatically when the linked PR merges and closes the issue. |
+
+Rules:
+
+- Each person should have only one or two issues **In Progress** at a time.
+- If a review asks for changes, the issue stays **In Review** while the author
+addresses them. If the work turns out to need much more effort, move it back
+to **In Progress** and convert the PR to a draft.
+- If an issue is blocked, leave it in its column, comment on what is blocking
+it, and bring it up in the team chat or at the next meeting.
+- An issue that won't make its Target date is discussed at the next team
+meeting and either moved to a later Sprint or split up.
+- Issues are closed only through a merged PR or by team agreement (e.g. a
+duplicate or work that is no longer needed), with a comment explaining why.
+
+## Using Coding Agents
+
+Team members may use AI coding agents (e.g. Claude Code, GitHub Copilot) to
+help write code, tests, and documentation. Agent work follows exactly the same
+development process as human work, and the team member running the agent is
+responsible for everything it produces.
+
+### Starting an Agent Session
+
+The first instruction in every agent session points the agent to this
+document, so it follows the development process before doing anything else.
+For example:
+
+```text
+Read docs/semester_1/team_dev_proc.md and follow the development process it
+describes. Then work on issue #<number>: <short description>.
+```
+
+This tells the agent the repo layout, branch naming, PR rules, CI checks, and
+how issues move across the board.
+
+### Best Practices
+
+- **One issue per session.** Give the agent a single issue to work on, and
+link it so the agent can read the Scope and "Done when" criteria.
+- **Always work on a branch.** The agent creates a branch named by the
+`type/area-short-description` convention. It never commits to main, force
+pushes, or changes branch protection, CI workflows, or other GitHub settings
+unless the issue is specifically about them.
+- **Respect the API contract.** Changes that touch the Android ↔ Flask
+interface must match shared/openapi.yaml, or update it in the same PR.
+- **Keep PRs small.** Ask the agent for focused changes that stay within the PR
+size target. Split larger work into several issues and PRs.
+- **Tests come with the code.** Have the agent write or update tests for the
+behavior it changes, and run the area's tests and linters locally before
+pushing.
+- **Review everything it writes.** Read the whole diff before opening a PR, as
+you would your own code. Make sure you understand it and can explain it in
+review. The 1–2 approvals from teammates are still required.
+- **Never share secrets.** Don't paste API keys, tokens, `.env`, or
+secrets.properties contents into an agent. Agents must not commit secrets or
+add them to code.
+- **Check its facts.** Agents can make up APIs, library versions, or links.
+Verify dependencies, sources, and any claims against the official
+documentation.
+- **Be transparent.** Mention in the PR description when an agent wrote a
+significant part of the change, and keep any co-author lines it adds to
+commits.
+- **Keep instructions in the repo.** If the team finds a rule agents keep
+missing, add it to this document (through a PR) instead of repeating it in
+each session.
