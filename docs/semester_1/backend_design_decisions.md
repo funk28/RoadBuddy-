@@ -228,7 +228,28 @@ frame) with `outcome: rejected` for later review or model evaluation. The respon
 
 ## 6. Reports: GET and DELETE /v1/me/reports (#40)
 
-_Filled in by the #40 PR._
+- **A report is a detection that made it onto a hazard.** Rejected detections (the
+  classifier said "not a hazard") and undone or deleted ones aren't listed. The `badge`
+  enum has no value for them, and the driver never saw them as reports.
+- **`type` and `severity` come from the hazard**, not the single frame, so the Reports
+  screen agrees with the Hazards screen after merges or corrections.
+- **Badges:** `outcome: created` → `submitted`, `matched` → `matched`; a hazard that is no
+  longer live (expired, or removed as "not a hazard") → `expired`. `pending_upload` is
+  never sent by the server; the phone adds those from its own upload queue.
+- **"This trip" uses a new optional `trip_id` in the upload's `meta`.** The contract had
+  `?trip_id=` on the list call, but no way for the server to know which trip a
+  detection belonged to. The phone makes one id per drive and sends it with each
+  detection (migration `0002`). Without it, the filter just returns nothing for that trip.
+- **Images are served by the API, behind the same auth:** `image_url` points at
+  `GET /v1/me/reports/{id}/image`, which returns the JPEG only to its owner. The Android
+  image loader (e.g. Coil) has to send the `Authorization` header. Signed S3 URLs can
+  replace this later without changing the field.
+- **Deleting a report works at any time** (unlike undo's 5 s window). It soft-deletes the
+  detection, takes its sighting off the hazard (`hazard_removed: true` when that was the
+  last one), and **deletes the stored frame**, since the driver asked for it to be gone.
+- **`location_name` is left out for now.** It's optional in the contract; filling it needs
+  reverse geocoding (Google Geocoding API, in `services/maps.py`). See §9.
+- Sorted newest `captured_at` first.
 
 ---
 
@@ -245,6 +266,8 @@ The dev process requires 2 approvals for these, since they change `shared/openap
 | PR | Change | Why |
 |---|---|---|
 | #42 | `DELETE /detections/{id}` can return `409 undo_expired` | The contract had no response for "the undo window has closed" |
+| #40 | Optional `DetectionMeta.trip_id` (1–64 characters) | `GET /me/reports?trip_id=` needs the server to know each detection's trip. **The phone (#38) needs to start sending it.** |
+| #40 | New `GET /me/reports/{id}/image` | The endpoint behind `Report.image_url` |
 
 ---
 
@@ -254,6 +277,8 @@ Deliberately left for later:
 
 - **Hazard expiry.** Nothing sets a hazard to `expired` yet; that needs a scheduled job
   (for example, live hazards not seen for N days).
+- **`location_name` on reports** ("Oak St near 4th St") needs reverse geocoding, which
+  isn't wired up (#40).
 - **Image checks.** Only the JPEG magic bytes and the 10 MB size limit are checked; the
   frame isn't decoded or resized.
 - **S3.** Frames are on the instance's disk, which an EC2 replacement would lose.
