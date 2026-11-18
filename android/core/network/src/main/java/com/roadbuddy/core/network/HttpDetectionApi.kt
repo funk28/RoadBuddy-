@@ -16,10 +16,17 @@ import kotlinx.coroutines.withContext
  * [DetectionApi] over HTTP, using only [HttpURLConnection] so no networking
  * library is needed yet.
  *
+ * This module's manifest adds the `INTERNET` permission. A plain-`http://` dev
+ * server also needs cleartext allowed in the app's debug build; see
+ * android/README.md.
+ *
  * @param baseUrl server root including the version prefix, e.g.
- *   `http://10.0.2.2:5000/v1` for a Flask dev server on the emulator's host.
- * @param idTokenProvider returns the Google ID token sent as
- *   `Authorization: Bearer ...`, or null while sign-in isn't implemented.
+ *   `http://10.0.2.2:5000/v1` for a Flask dev server on the emulator's host, or
+ *   `http://127.0.0.1:5000/v1` after `adb reverse tcp:5000 tcp:5000`.
+ * @param idTokenProvider returns the token sent as `Authorization: Bearer ...`.
+ *   The backend rejects requests without one (`401 unauthorized`). Until Google
+ *   sign-in exists, run the backend with `DEV_AUTH=true` and return a dev token
+ *   such as `"dev:aiden"`. Later this returns the Google ID token.
  */
 class HttpDetectionApi(
     baseUrl: String,
