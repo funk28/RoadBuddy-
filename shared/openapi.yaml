@@ -297,6 +297,30 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /me/reports/{id}/image:
+    get:
+      tags: [Reports]
+      operationId: getMyReportImage
+      summary: Get a report's captured frame
+      description: |
+        The JPEG behind a report's `image_url`. It needs the same bearer token
+        as every other call, so the app's image loader must send the
+        `Authorization` header.
+      parameters:
+        - $ref: "#/components/parameters/DetectionId"
+      responses:
+        "200":
+          description: The captured frame.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                contentMediaType: image/jpeg
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /me/reports/{id}:
     delete:
       tags: [Reports]
@@ -481,6 +505,14 @@ components:
           maximum: 1
           description: Confidence from the on-device detector.
           example: 0.81
+        trip_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |
+            Optional id the phone makes for each drive. `GET /me/reports?trip_id=`
+            filters on it for the "This trip" view.
+          example: t_9
 
     DetectionResult:
       type: object

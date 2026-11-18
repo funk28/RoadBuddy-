@@ -74,6 +74,8 @@ class Detection(db.Model):  # type: ignore[name-defined]
     lng: Mapped[float] = mapped_column(Float)
     heading_deg: Mapped[float | None] = mapped_column(Float)
     local_confidence: Mapped[float | None] = mapped_column(Float)
+    # Optional, set by the phone per drive; lets My reports filter to "This trip".
+    trip_id: Mapped[str | None] = mapped_column(String(64))
     image_key: Mapped[str] = mapped_column(String(255))
     # What the classifier said about this frame.
     is_hazard: Mapped[bool] = mapped_column(Boolean)

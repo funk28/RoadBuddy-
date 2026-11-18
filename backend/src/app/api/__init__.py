@@ -6,4 +6,4 @@ v1 = Blueprint("v1", __name__, url_prefix="/v1")
 v1.before_request(authenticate)
 
 # Route modules register themselves on `v1` when imported.
-from app.api import detections, hazards  # noqa: E402, F401
+from app.api import detections, hazards, reports  # noqa: E402, F401

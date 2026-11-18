@@ -29,6 +29,7 @@ from app.services.vlm_client import (
 )
 
 MAX_CLIENT_ID_LENGTH = 128
+MAX_TRIP_ID_LENGTH = 64
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ class DetectionMeta:
     lng: float
     heading_deg: float | None
     local_confidence: float | None
+    trip_id: str | None
 
 
 def _parse_meta(raw: str | None) -> DetectionMeta:
@@ -62,6 +64,11 @@ def _parse_meta(raw: str | None) -> DetectionMeta:
         raise bad_request("meta.location is required.")
 
     lat, lng = v.location(meta["location"], "meta.location")
+    trip_id = meta.get("trip_id")
+    if trip_id is not None and (
+        not isinstance(trip_id, str) or not trip_id or len(trip_id) > MAX_TRIP_ID_LENGTH
+    ):
+        raise bad_request(f"meta.trip_id must be a string of 1-{MAX_TRIP_ID_LENGTH} characters.")
     heading = meta.get("heading_deg")
     confidence = meta.get("local_confidence")
     return DetectionMeta(
@@ -75,6 +82,7 @@ def _parse_meta(raw: str | None) -> DetectionMeta:
         local_confidence=None
         if confidence is None
         else v.number(confidence, "meta.local_confidence", minimum=0, maximum=1),
+        trip_id=trip_id,
     )
 
 
@@ -163,6 +171,7 @@ def report_detection():
         lng=meta.lng,
         heading_deg=meta.heading_deg,
         local_confidence=meta.local_confidence,
+        trip_id=meta.trip_id,
         image_key=image_key,
         is_hazard=classification.is_hazard,
         hazard_type=classification.hazard_type if classification.is_hazard else None,
