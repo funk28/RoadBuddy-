@@ -1,0 +1,20 @@
+# Local PostGIS for development and tests: `docker compose up -d` from backend/.
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: roadbuddy
+      POSTGRES_PASSWORD: roadbuddy
+      POSTGRES_DB: roadbuddy
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roadbuddy"]
+      interval: 2s
+      retries: 15
+
+volumes:
+  pgdata:

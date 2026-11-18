@@ -1,2 +1,12 @@
 # Local Claude Code workspace (not shared)
 .claude/
+
+# Python / backend
+__pycache__/
+*.egg-info/
+.venv/
+.env
+backend/var/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

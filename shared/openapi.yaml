@@ -130,6 +130,15 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            The 5 s undo window (`undo_expires_at`) has passed
+            (`code: undo_expired`). The phone shows "Couldn't undo, remove it
+            from My reports".
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /hazards:
     get:
