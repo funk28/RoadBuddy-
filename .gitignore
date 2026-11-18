@@ -1,2 +1,10 @@
 # Local Claude Code workspace (not shared)
 .claude/
+
+# Android/Gradle build output and local configuration
+.gradle/
+**/.kotlin/
+**/.idea/
+**/build/
+local.properties
+secrets.properties
