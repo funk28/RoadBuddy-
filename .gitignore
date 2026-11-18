@@ -6,5 +6,6 @@
 **/.kotlin/
 **/.idea/
 **/build/
+**/gradle-daemon-jvm.properties
 local.properties
 secrets.properties
