@@ -37,7 +37,7 @@ What is mocked for the prototype:
 - **GPS:** `SimulatedGps` moves the car along the route at about 30 mph.
 - **Detection:** `reportPothole()` stands in for the YOLO model and sends `PlaceholderFrame` as the image.
 
-The calls themselves are real: `reportPothole()` sends `POST /v1/detections` and `undo()` sends `DELETE /v1/detections/{id}` within the 5 s window. Reports that fail to send stay on the phone and are retried with the same `client_detection_id`. Use `StubDetectionApi` to demo without a server, or `HttpDetectionApi("http://10.0.2.2:5000/v1")` to talk to the Flask dev server from the emulator. That server is plain `http://`, so a debug build also needs cleartext traffic allowed (for example `android:usesCleartextTraffic="true"` in a debug manifest).
+The calls themselves are real: `reportPothole()` sends `POST /v1/detections` and `undo()` sends `DELETE /v1/detections/{id}` within the 5 s window. Reports that fail to send stay on the phone and are retried with the same `client_detection_id`. Use `StubDetectionApi` to demo without a server, or `HttpDetectionApi` to talk to the Flask backend (see below).
 
 ```kotlin
 // In RoadBuddyApp, next to DriveSessionGate:
@@ -47,3 +47,39 @@ val navigationSession = remember { NavigationSession(scope, StubDetectionApi()) 
 // In DriveSessionScreen:
 val nav by navigationSession.state.collectAsState()
 ```
+
+### Running against the Flask backend
+
+1. Start the backend as described in `backend/README.md`, with `DEV_AUTH=true` in `backend/.env`. Every `/v1` request needs `Authorization: Bearer ...`. Until Google sign-in exists, the backend accepts any `dev:<name>` token in dev mode.
+2. Point the app at it with a dev token:
+
+   ```kotlin
+   NavigationSession(scope, HttpDetectionApi("http://10.0.2.2:5000/v1", idTokenProvider = { "dev:aiden" }))
+   ```
+
+   `10.0.2.2` is the emulator's address for your computer. If it times out (often a firewall), run `adb reverse tcp:5000 tcp:5000` and use `http://127.0.0.1:5000/v1` instead.
+3. Allow plain `http://` in **debug builds only**, limited to those two hosts. `core:network` already adds the `INTERNET` permission. Add these to the `app` module:
+
+   `app/src/debug/res/xml/network_security_config.xml`
+
+   ```xml
+   <?xml version="1.0" encoding="utf-8"?>
+   <network-security-config>
+       <domain-config cleartextTrafficPermitted="true">
+           <domain includeSubdomains="false">10.0.2.2</domain>
+           <domain includeSubdomains="false">127.0.0.1</domain>
+           <domain includeSubdomains="false">localhost</domain>
+       </domain-config>
+   </network-security-config>
+   ```
+
+   `app/src/debug/AndroidManifest.xml`
+
+   ```xml
+   <?xml version="1.0" encoding="utf-8"?>
+   <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+       <application android:networkSecurityConfig="@xml/network_security_config" />
+   </manifest>
+   ```
+
+Without a token every call fails with `401 unauthorized`, and the app shows "Couldn't report hazard". The backend refuses Undo after 5 s with `409 undo_expired`, which the app shows as "Couldn't undo, remove it from My reports".
