@@ -202,7 +202,27 @@ frame) with `outcome: rejected` for later review or model evaluation. The respon
 
 ## 5. Hazards: GET and PATCH /v1/hazards (#39)
 
-_Filled in by the #39 PR._
+- **Only `live` hazards are listed.** Expired and removed ones never appear, even with
+  filters.
+- **Sorted nearest first**, with `distance_m` from `ST_Distance` on geography (true
+  meters), rounded to 0.1 m.
+- **`radius_m` is capped at 50 km** and results at 500, so one request can't scan the
+  whole table. The Hazards screen asks for about 2 km.
+- **`reported_by_me`** is true when the user has a detection on that hazard that hasn't
+  been undone or deleted. `mine=true` filters on the same rule, so undoing your only
+  report makes the hazard leave "Mine".
+- **Query parameters are strict:** `mine` accepts `true`/`false`/`1`/`0`, `radius_m` must
+  be a whole number, and `severity` must be one of the three values. Anything else is a
+  400 rather than being silently ignored.
+- **Any signed-in user can PATCH any hazard.** The Hazards screen offers "Edit severity" and
+  "Not a hazard" on every pin, not just your own. There's no moderation or audit log
+  yet; see §9.
+- **PATCH accepts any `HazardStatus`** (`live`, `expired`, `removed`), matching the
+  contract, and rejects unknown fields and bad values with 400 without changing anything.
+  A PATCHed severity sticks until a new sighting reports something worse (§4).
+- **Seed data:** `flask --app app seed-hazards` adds six potholes around campus. It skips
+  any point that already has a live hazard within the match radius, so it can be re-run.
+  Points along Aiden's mocked route can be added once that route (#38) is merged.
 
 ---
 
@@ -239,6 +259,8 @@ Deliberately left for later:
 - **S3.** Frames are on the instance's disk, which an EC2 replacement would lose.
 - **CI.** No `.github/workflows/` for `backend/` yet; the checks in `backend/README.md`
   are the ones it should run.
+- **Hazard edits aren't moderated.** Any user can change any hazard's severity or remove
+  it (#39), with no record of who did.
 - **Rate limiting.** None yet.
 - **Production server.** Only `flask run` (the development server) is set up; EC2 needs a
   WSGI server such as gunicorn, which hasn't been chosen or added.
