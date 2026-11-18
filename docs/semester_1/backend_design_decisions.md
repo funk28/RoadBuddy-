@@ -255,7 +255,21 @@ frame) with `outcome: rejected` for later review or model evaluation. The respon
 
 ## 7. Settings: GET and PUT /v1/me/settings (#41)
 
-_Filled in by the #41 PR._
+- **Defaults are everything on** (`audible_alerts`, `detection_enabled` and
+  `suggest_reroutes` all `true`), matching the contract's example. A user who has never
+  saved gets the defaults from `GET` without a row being written. **The app's DataStore
+  defaults should match** so the UI doesn't flip on first sync.
+- **`updated_at` for a user who never saved** is when their account was created, since
+  the contract requires the field.
+- **PUT replaces all three settings** (it's a PUT, not a PATCH): every field is
+  required and must be a JSON boolean (`"true"` and `1` are rejected). The row is
+  upserted with `INSERT … ON CONFLICT DO UPDATE`, so two quick saves can't collide.
+- **Unknown fields are ignored**, not rejected. The app syncs settings in the background
+  and retries on failure, so a newer app with an extra setting would otherwise retry
+  against an older server forever.
+- The server only stores the settings. The phone enforces them (for example, stopping
+  frame capture when `detection_enabled` is false); the server doesn't reject uploads
+  based on them.
 
 ---
 
