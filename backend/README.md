@@ -67,6 +67,15 @@ curl -H 'Authorization: Bearer dev:alice' \
 curl -X DELETE -H 'Authorization: Bearer dev:alice' localhost:5000/v1/detections/d_1
 ```
 
+### Seed test data
+
+```sh
+flask --app app seed-hazards
+```
+
+Adds six test potholes around Purdue's campus for the Hazards screen. It's safe to run
+again: points that already have a live hazard nearby are skipped.
+
 To look at the database directly:
 
 ```sh

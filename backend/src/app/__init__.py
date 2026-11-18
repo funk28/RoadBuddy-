@@ -6,6 +6,7 @@ from app.auth import TokenVerifier, google_verifier
 from app.config import Config
 from app.errors import register_error_handlers
 from app.extensions import db, migrate
+from app.seed import register_cli
 from app.services.storage import ImageStore
 from app.services.vlm_client import HazardClassifier, build_classifier
 
@@ -38,4 +39,5 @@ def create_app(
     from app.api import v1
 
     app.register_blueprint(v1)
+    register_cli(app)
     return app
