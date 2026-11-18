@@ -22,8 +22,9 @@ import kotlinx.coroutines.launch
  * Navigation and detection logic for the Navigation screen (issue #38).
  *
  * - Drives a simulated position along a mocked [Route].
- * - [reportPothole] stands in for the YOLO model: it sends `POST /v1/detections`
- *   and shows the "New hazard reported" alert.
+ * - [reportPothole] stands in for the YOLO model: it takes a mock pothole frame
+ *   tagged with EXIF GPS for the current position ([frameSource]), sends
+ *   `POST /v1/detections`, and shows the "New hazard reported" alert.
  * - [undo] calls `DELETE /v1/detections/{id}` while the 5 s window is open.
  * - Failed reports are kept on the phone and retried with the same
  *   `client_detection_id`, as the API contract describes.
@@ -44,6 +45,8 @@ class NavigationSession(
     private val undoWindow: Duration = Duration.ofSeconds(5),
     private val countdownTickMillis: Long = 250,
     private val retryDelayMillis: Long = 5_000,
+    /** The JPEG to upload for a detection at a position and time; must carry EXIF GPS. */
+    private val frameSource: (RoutePosition, Instant) -> ByteArray = MockPotholeFrames::frameAt,
 ) {
     private val mutableState = MutableStateFlow(stateAt(distanceM = 0.0))
 
@@ -93,10 +96,13 @@ class NavigationSession(
     /**
      * The fake "pothole detected" trigger: reports a pothole at the current position.
      * Does nothing unless a drive is in progress. Returns the `client_detection_id`.
+     *
+     * The uploaded image comes from [frameSource] for the same position and time
+     * as the `meta` JSON, unless [jpeg] is given.
      */
     fun reportPothole(
         localConfidence: Double = 0.81,
-        jpeg: ByteArray = PlaceholderFrame.jpeg(),
+        jpeg: ByteArray? = null,
     ): String? {
         val snapshot = state.value
         if (!snapshot.driving) return null
@@ -110,7 +116,7 @@ class NavigationSession(
                 headingDeg = snapshot.position.headingDeg,
                 localConfidence = localConfidence,
             ),
-            jpeg = jpeg,
+            jpeg = jpeg ?: frameSource(snapshot.position, now),
             undoDeadline = now.plus(undoWindow),
         )
         current = detection

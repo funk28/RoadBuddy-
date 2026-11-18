@@ -35,7 +35,7 @@ What is mocked for the prototype:
 
 - **Route:** `MockRoutes.CAMPUS_LOOP` is a hardcoded polyline, with no Google Routes API call.
 - **GPS:** `SimulatedGps` moves the car along the route at about 30 mph.
-- **Detection:** `reportPothole()` stands in for the YOLO model and sends `PlaceholderFrame` as the image.
+- **Detection:** `reportPothole()` stands in for the YOLO model. It uploads one of the bundled mock pothole images (`core/data/src/main/resources/com/roadbuddy/core/data/navigation/mock_pothole_*.jpg`), and `GpsExif` stamps EXIF GPS into it for the car's current position, heading and capture time, matching the `meta` JSON. To use real photos, replace those files.
 
 The calls themselves are real: `reportPothole()` sends `POST /v1/detections` and `undo()` sends `DELETE /v1/detections/{id}` within the 5 s window. Reports that fail to send stay on the phone and are retried with the same `client_detection_id`. Use `StubDetectionApi` to demo without a server, or `HttpDetectionApi("http://10.0.2.2:5000/v1")` to talk to the Flask dev server from the emulator. That server is plain `http://`, so a debug build also needs cleartext traffic allowed (for example `android:usesCleartextTraffic="true"` in a debug manifest).
 

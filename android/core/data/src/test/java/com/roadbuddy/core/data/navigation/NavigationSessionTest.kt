@@ -30,12 +30,14 @@ class NavigationSessionTest {
     /** Records calls; each test decides how the "server" answers. */
     private class FakeApi : DetectionApi {
         val reports = mutableListOf<DetectionMeta>()
+        val images = mutableListOf<ByteArray>()
         val undos = mutableListOf<String>()
         var onReport: suspend (DetectionMeta) -> DetectionResult = { created(it) }
         var onUndo: suspend (String) -> Boolean = { true }
 
         override suspend fun reportDetection(meta: DetectionMeta, jpeg: ByteArray): DetectionResult {
             reports += meta
+            images += jpeg
             return onReport(meta)
         }
 
@@ -170,6 +172,24 @@ class NavigationSessionTest {
         assertEquals(90.0, meta.headingDeg!!, 1.0)
         assertEquals(0.9, meta.localConfidence, 0.0)
         assertEquals(now, meta.capturedAt)
+        scope.cancel()
+    }
+
+    @Test
+    fun uploadedFrameIsAPotholeImageTaggedWithTheSameGpsAsMeta() = runBlocking {
+        val (session, scope) = newSession()
+        session.driveTo(700.0)
+
+        session.reportPothole()
+        session.awaitState { it.alert?.phase == AlertPhase.REPORTED }
+
+        val meta = api.reports.single()
+        val exif = GpsExif.read(api.images.single())!!
+        assertEquals(meta.location.lat, exif.location.lat, 1e-7)
+        assertEquals(meta.location.lng, exif.location.lng, 1e-7)
+        assertEquals(meta.capturedAt, exif.capturedAt)
+        assertEquals(meta.headingDeg!!, exif.headingDeg!!, 0.01)
+        assertTrue(api.images.single().size > 20_000)
         scope.cancel()
     }
 
