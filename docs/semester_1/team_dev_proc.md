@@ -90,6 +90,8 @@ Rules:
 
 - main is a protected branch: no direct pushes, no force pushes, no branch
 deletion. Every change, including docs, reaches main through a pull request.
+Docs-only PRs don't need an approving review (see Code Review & Approval
+Process).
 - main should always build and pass CI. If main breaks, fixing it is the
 team's top priority, and the person whose merge broke it owns the fix (or the
 revert).
@@ -99,8 +101,10 @@ below, so the policy does not rely on memory.
 ### Pull Request Frequency & Size
 
 - Open small, focused PRs often rather than one large PR at the end of a
-feature. Target: under ~400 changed lines (excluding generated files, lock
-files, and model weights).
+feature. We recommend keeping PRs to about 400 changed lines or fewer
+(excluding generated files, lock files, and model weights). This is a
+guideline, not a limit: a larger PR is fine when the change can't be split
+sensibly, as long as the description says why.
 - Each team member should aim to open at least one PR per week during active
 development, so work stays visible and merge conflicts stay small.
 - Feature branches should be short-lived: merge or rebase onto main within a
@@ -108,8 +112,9 @@ few days. A branch older than one week should be rebased on main, split up, or
 discussed at the next team meeting.
 - A PR touches one area (android, backend, vlm, mapping) when possible.
 Cross-area changes (e.g. an API change that touches both android and backend)
-must update shared/openapi.yaml in the same PR and should get a reviewer from
-each affected area.
+must update shared/openapi.yaml in the same PR. One approval is enough;
+ideally the reviewer works in one of the affected areas, and the other area's
+owners are tagged so they know about the change.
 - Draft PRs are encouraged for early feedback; they are not reviewed for
 approval until marked "Ready for review."
 
@@ -132,8 +137,14 @@ commit is not enough.
 ### Code Review & Approval Process
 
 - At least **1 approving review** from a teammate other than the author is
-required to merge. Changes to shared/openapi.yaml, CI workflows, or the
-VLM inference interface require **2 approvals**, since they affect everyone.
+required to merge a code change. This includes changes to shared/openapi.yaml,
+CI workflows, and the VLM inference interface; since those affect everyone,
+tag the people who depend on them so they see the change.
+- **Docs-only PRs** (PRs that only change files under docs/ or Markdown files
+such as READMEs) don't need an approving review. The author can merge once
+CI passes. Teammates can still comment, and anyone can fix a docs mistake
+with a follow-up PR. A change to the API contract is not docs-only: it goes
+through shared/openapi.yaml and needs a review.
 - Reviewers are requested by the author, preferably someone who works in the
 affected area, plus one person outside the area now and then to spread
 knowledge across the team.
@@ -182,8 +193,8 @@ frequent PRs.
 
 ### Merging into main
 
-- The PR author merges their own PR once it has the required approvals and
-passing CI; this keeps ownership clear.
+- The PR author merges their own PR once it has the required approval (none
+for docs-only PRs) and passing CI; this keeps ownership clear.
 - Branches must be up to date with main before merging. Rebase or merge main
 into the branch and let CI re-run.
 - Use **squash and merge** so each PR becomes one clean commit on main, with
@@ -283,14 +294,15 @@ pushes, or changes branch protection, CI workflows, or other GitHub settings
 unless the issue is specifically about them.
 - **Respect the API contract.** Changes that touch the Android ↔ Flask
 interface must match shared/openapi.yaml, or update it in the same PR.
-- **Keep PRs small.** Ask the agent for focused changes that stay within the PR
-size target. Split larger work into several issues and PRs.
+- **Keep PRs small.** Ask the agent for focused changes, around the ~400-line
+recommendation. Split larger work into several issues and PRs when it can be
+split sensibly.
 - **Tests come with the code.** Have the agent write or update tests for the
 behavior it changes, and run the area's tests and linters locally before
 pushing.
 - **Review everything it writes.** Read the whole diff before opening a PR, as
 you would your own code. Make sure you understand it and can explain it in
-review. The 1–2 approvals from teammates are still required.
+review. A teammate's approval is still required for code changes.
 - **Never share secrets.** Don't paste API keys, tokens, `.env`, or
 secrets.properties contents into an agent. Agents must not commit secrets or
 add them to code.

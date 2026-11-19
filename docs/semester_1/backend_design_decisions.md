@@ -275,7 +275,8 @@ frame) with `outcome: rejected` for later review or model evaluation. The respon
 
 ## 8. Contract changes made by these PRs
 
-The dev process requires 2 approvals for these, since they change `shared/openapi.yaml`.
+These change `shared/openapi.yaml`, which Android and the VLM depend on; tag those owners on
+any further contract change.
 
 | PR | Change | Why |
 |---|---|---|
