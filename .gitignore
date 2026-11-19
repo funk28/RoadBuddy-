@@ -6,5 +6,16 @@
 **/.kotlin/
 **/.idea/
 **/build/
+**/gradle-daemon-jvm.properties
 local.properties
 secrets.properties
+
+# Python / backend
+__pycache__/
+*.egg-info/
+.venv/
+.env
+backend/var/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

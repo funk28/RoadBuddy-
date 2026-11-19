@@ -15,4 +15,13 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "RoadBuddy"
-include(":app", ":core:ui", ":feature:reports")
+include(
+    ":app",
+    ":core:model",
+    ":core:network",
+    ":core:data",
+    ":core:ui",
+    ":feature:settings",
+    ":feature:hazards",
+    ":feature:reports",
+)
