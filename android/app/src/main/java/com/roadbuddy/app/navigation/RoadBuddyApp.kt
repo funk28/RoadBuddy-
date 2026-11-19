@@ -18,12 +18,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.roadbuddy.core.data.DriveSettingsRepository
 import com.roadbuddy.app.BuildConfig
+import com.roadbuddy.core.data.DriveSettingsRepository
 import com.roadbuddy.core.data.DriveSessionGate
 import com.roadbuddy.core.data.navigation.NavigationSession
 import com.roadbuddy.core.network.createDetectionApi
 import com.roadbuddy.core.ui.navigation.RoadBuddyBottomBar
+import com.roadbuddy.feature.hazards.HazardsRoute
+import com.roadbuddy.feature.hazards.createHazardsRepository
 import com.roadbuddy.feature.settings.SettingsRoute
 
 private object Routes {
@@ -48,10 +50,14 @@ fun RoadBuddyApp() {
         )
     }
     val navController = rememberNavController()
+    val hazardsRepository = remember {
+        createHazardsRepository(BuildConfig.API_BASE_URL, BuildConfig.DEV_AUTH_TOKEN)
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             RoadBuddyBottomBar(
                 selectedRoute = currentRoute,
@@ -78,7 +84,7 @@ fun RoadBuddyApp() {
                 DriveSessionScreen(driveSessionGate, driveCameraRuntime, navigationSession)
             }
             composable(Routes.HAZARDS) {
-                PlaceholderScreen("Hazards")
+                HazardsRoute(hazardsRepository)
             }
             composable(Routes.REPORTS) {
                 PlaceholderScreen("Reports")

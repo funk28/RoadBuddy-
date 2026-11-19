@@ -4,7 +4,9 @@
 # Android/Gradle build output and local configuration
 .gradle/
 **/.kotlin/
+**/.idea/
 **/build/
+**/gradle-daemon-jvm.properties
 local.properties
 secrets.properties
 

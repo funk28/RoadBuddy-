@@ -9,6 +9,7 @@ This is the native Android application, built with Kotlin and Jetpack Compose.
 - `core/network`: Android side of the API contract (`DetectionApi`), with an HTTP client and an in-memory stub.
 - `core/data`: DataStore-backed settings repository, reactive behavior gates, and the navigation/detection logic (`navigation/`).
 - `core/ui`: shared theme and bottom navigation.
+- `feature/hazards`: the Hazards destination and its sample/HTTP repositories.
 - `feature/settings`: the Settings destination.
 
 ## Local setup
@@ -65,3 +66,21 @@ The calls themselves are real: `reportPothole()` sends `POST /v1/detections` and
 Debug builds allow plain `http://` to `10.0.2.2`, `127.0.0.1` and `localhost` only (`app/src/debug/res/xml/network_security_config.xml`). Release builds allow no cleartext.
 
 Without a token every call fails with `401 unauthorized`, and the app shows "Couldn't report hazard". The backend refuses Undo after 5 s with `409 undo_expired`, which the app shows as "Couldn't undo, remove it from My reports".
+
+## Hazards API
+
+The Hazards destination includes a map, filters, editable hazard cards, and the
+shared bottom navigation. It uses contract-shaped sample data by default. To
+connect it to the API, use the same `apiBaseUrl` Gradle property as the rest of
+the app:
+
+```powershell
+.\gradlew.bat :app:assembleDebug -PapiBaseUrl=https://your-api.example/v1
+```
+
+The configured root must end in `/v1`; the app calls `GET /hazards` and
+`PATCH /hazards/{id}`. The sample data is used when this property is omitted.
+Debug builds send the configured `DEV_AUTH_TOKEN` as a bearer token. As with
+detection reporting, production authentication still needs Google sign-in.
+Hazards queries currently use the Purdue coordinates from the API contract
+until location integration is available.
