@@ -3,6 +3,12 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+// Point the app at a backend with -PapiBaseUrl=http://127.0.0.1:5056/v1 (see README).
+// Without it, detections go to the in-memory StubDetectionApi.
+val apiBaseUrl = providers.gradleProperty("apiBaseUrl").getOrElse("")
+// Sent as the bearer token by debug builds until Google sign-in exists.
+val devAuthToken = providers.gradleProperty("devAuthToken").getOrElse("dev:demo")
+
 android {
     namespace = "com.roadbuddy.app"
     compileSdk = 37
@@ -13,9 +19,20 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+    }
+
+    buildTypes {
+        debug {
+            buildConfigField("String", "DEV_AUTH_TOKEN", "\"$devAuthToken\"")
+        }
+        release {
+            buildConfigField("String", "DEV_AUTH_TOKEN", "\"\"")
+        }
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 
