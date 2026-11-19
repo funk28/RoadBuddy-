@@ -28,7 +28,11 @@ def create_app(
     register_error_handlers(app)
 
     app.extensions["hazard_classifier"] = classifier or build_classifier(
-        app.config["VLM_CLASSIFIER"]
+        app.config["VLM_CLASSIFIER"],
+        api_key=app.config["VLM_API_KEY"],
+        model=app.config["VLM_MODEL"],
+        base_url=app.config["VLM_BASE_URL"],
+        timeout_s=app.config["VLM_TIMEOUT_S"],
     )
     app.extensions["token_verifier"] = token_verifier or google_verifier(
         app.config["GOOGLE_CLIENT_IDS"]

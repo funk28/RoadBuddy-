@@ -96,7 +96,77 @@ Settings come from environment variables; every one is listed in
 | `IMAGE_STORAGE_DIR` | `./var/images` | Where uploaded frames are written (gitignored) |
 | `VLM_CLASSIFIER` | `stub` | Which `HazardClassifier` to use (see `services/vlm_client.py`) |
 | `VLM_TIMEOUT_S` | `5` | Seconds before a classify call becomes `503 vlm_unavailable` |
+| `VLM_API_KEY` | empty | Provider key; required only with `VLM_CLASSIFIER=openai` |
+| `VLM_MODEL` | `gpt-5.4-mini` | Vision model ID (max 64 characters, matching detection storage) |
+| `VLM_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible provider base URL, including `/v1` |
 | `HAZARD_MATCH_RADIUS_M` | `15` | Detections this close to a live hazard merge into it |
+
+### Enable the real VLM prototype (#49)
+
+The default `stub` still works offline and returns `model_id=stub-0.1`.
+To classify real road JPEGs, set these values in your gitignored `backend/.env`:
+
+```dotenv
+VLM_CLASSIFIER=openai
+VLM_API_KEY=your-provider-key
+VLM_MODEL=gpt-5.4-mini
+VLM_BASE_URL=https://api.openai.com/v1
+VLM_TIMEOUT_S=5
+```
+
+The adapter uses the existing `requests` dependency to send a base64 JPEG and
+detector hint to `/chat/completions`, requesting JSON mode. The example model
+supports [image input and Chat Completions](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
+Another provider can be selected with `VLM_BASE_URL` and its key/model; it must
+support JPEG data URLs, `response_format: {"type":"json_object"}`, and
+`max_completion_tokens`. Use a trusted HTTPS endpoint: the image and key are sent
+there. Real requests incur provider usage charges; automated tests mock HTTP.
+See the official [vision](https://developers.openai.com/api/docs/guides/images-vision)
+and [JSON mode](https://developers.openai.com/api/docs/guides/structured-outputs#json-mode)
+documentation for the request format.
+
+The prompt in `src/app/services/vlm_client.py` estimates **minor** (small/shallow
+surface loss), **moderate** (clear cavity/broken edges), or **severe** (apparently
+deep/wide cavity or major wheel-path damage). These are prototype visual judgments,
+not measured depth or calibrated safety ratings. Confidence is the model's estimate.
+For a non-pothole, `is_hazard=false` with `hazard_type=pothole` and `severity=minor`
+preserves the required result fields; the backend rejects it and creates no hazard.
+`model_id` comes from `VLM_MODEL`, not generated text. The Python interface and
+`shared/openapi.yaml` are unchanged.
+
+Malformed responses, refusals, truncation, and provider/network failures raise
+`ClassifierUnavailable`; the existing endpoint returns `503 vlm_unavailable`.
+There are no automatic retries or silent stub fallbacks. The existing timeout
+limits request waiting to `VLM_TIMEOUT_S`; the HTTP socket timeout also uses that
+value. A timed-out worker can keep running until its HTTP call ends.
+
+For a live demo after the first-time setup above:
+
+1. Set `DEV_AUTH=true` locally, reload `.env`, and restart Flask.
+2. Run the curl upload example with an actual pothole JPEG. Use a new
+   `client_detection_id` for each new frame; reused IDs return the original result.
+   Use locations more than 15 m apart when comparing severity, since matching
+   hazards keep the worse severity.
+3. Confirm `hazard.severity` in the upload response, then query
+   `/v1/hazards?lat=40.4237&lng=-86.9212&radius_m=2000` and `/v1/me/reports` with
+   the same bearer token. Check the corresponding Android Hazards/Reports screens.
+4. Upload a clear road without a pothole; expect `outcome=rejected`, no `hazard`,
+   and no new entry in those lists. Also try a shadow or patch as a negative sample.
+5. Record the images, expected/observed labels, model ID, and elapsed time for the
+   ECE 49595 prototype demonstration. Live accuracy, latency, and Android display
+   still need this manual check; mocked tests do not establish visual accuracy.
+
+Run classifier unit tests without PostGIS or a paid API:
+
+```sh
+pytest tests/test_vlm_client.py -k 'not detection_flow and not failure_is_503'
+```
+
+The full suite also runs the real adapter with mocked HTTP through detections,
+hazards, and reports against PostGIS. Unit tests reuse the existing synthetic JPEG
+transport bytes; they test parsing and integration, not recognition of road scenes.
+Codex generated the adapter, configuration wiring, tests, and this setup documentation;
+acknowledge that assistance in the assignment and review the changes before submission.
 
 ## Database migrations
 
@@ -154,7 +224,7 @@ backend/
 │   └── services/
 │       ├── hazards.py        # merge a detection into a hazard / take a sighting back
 │       ├── storage.py        # frame storage on disk
-│       └── vlm_client.py     # HazardClassifier interface + stub (#49 plugs in here)
+│       └── vlm_client.py     # HazardClassifier interface, stub, and vision API adapter
 └── tests/
 ```
 
