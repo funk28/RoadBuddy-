@@ -1,0 +1,671 @@
+openapi: 3.1.0
+
+info:
+  title: RoadBuddy API
+  version: 0.1.0-draft
+  summary: Android ↔ Flask contract for the Flow 2 walking skeleton.
+  description: |
+    Status: **draft**, not yet agreed on by the team.
+
+    The Android app talks only to Flask; Flask calls the VLM and PostGIS.
+
+    Conventions:
+    - Times are ISO-8601 UTC, distances are in meters.
+    - Every error uses the `Error` schema: `{"error": {"code": "...", "message": "..."}}`.
+
+    Mocked for now: the navigation route is a hardcoded polyline, with no
+    Google Routes API call.
+
+    Not HTTP: the VLM classifier (`HazardClassifier.classify(image, hint)`) is
+    a Python function called inside `POST /v1/detections`. Its input and output
+    are described by the `ClassifyHint` and `ClassificationResult` schemas so
+    the backend and VLM sides share one definition. It starts as a stub that
+    returns fixed results, and times out after ~5 s.
+
+servers:
+  - url: /v1
+
+security:
+  - googleIdToken: []
+
+tags:
+  - name: Detections
+    description: Navigation screen
+  - name: Hazards
+    description: Hazards screen
+  - name: Reports
+    description: Reports screen
+  - name: Settings
+    description: Settings screen
+
+paths:
+  /detections:
+    post:
+      tags: [Detections]
+      operationId: reportDetection
+      summary: Report a detected pothole (must work end to end)
+      description: |
+        Uploads a flagged frame and its GPS location. The server classifies it
+        with the VLM, merges it with any existing hazard within ~15 m, and
+        stores it in PostGIS.
+
+        If it fails or is slow, the phone saves the detection and shows
+        "1 report waiting to send". It retries automatically with the same
+        `client_detection_id`, so no duplicates are created. The driver never
+        has to tap anything.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image, meta]
+              properties:
+                image:
+                  type: string
+                  contentMediaType: image/jpeg
+                  description: The flagged camera frame.
+                meta:
+                  $ref: "#/components/schemas/DetectionMeta"
+            encoding:
+              image:
+                contentType: image/jpeg
+              meta:
+                contentType: application/json
+      responses:
+        "200":
+          description: Detection processed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DetectionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          description: |
+            The VLM timed out or is unavailable (`code: vlm_unavailable`).
+            The phone queues the detection and retries it, the same way it
+            handles being offline.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                error:
+                  code: vlm_unavailable
+                  message: Hazard classifier did not respond in time.
+
+  /detections/{id}:
+    delete:
+      tags: [Detections]
+      operationId: undoDetection
+      summary: Undo a detection
+      description: |
+        Removes a detection within 5 s if the driver says the hazard isn't
+        there (the hazard alert's Undo button).
+
+        If it fails or is slow, the alert shows "Couldn't undo, remove it from
+        My reports". The report stays and can be deleted later with
+        `DELETE /me/reports/{id}`.
+      parameters:
+        - $ref: "#/components/parameters/DetectionId"
+      responses:
+        "200":
+          description: Detection undone.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [detection_id, undone]
+                properties:
+                  detection_id:
+                    type: string
+                    example: d_123
+                  undone:
+                    type: boolean
+                    example: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            The 5 s undo window (`undo_expires_at`) has passed
+            (`code: undo_expired`). The phone shows "Couldn't undo, remove it
+            from My reports".
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /hazards:
+    get:
+      tags: [Hazards]
+      operationId: listHazards
+      summary: List hazards near me
+      description: |
+        Returns live hazards within a radius, for the map pins, the list, and
+        the All / Mine / Severe only filters. Uses PostGIS `ST_DWithin`.
+
+        If it is slow, the list shows a loading placeholder and the map keeps
+        the last pins it loaded. On failure, a "Couldn't load hazards" banner
+        with Retry is shown.
+      parameters:
+        - name: lat
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -90
+            maximum: 90
+          example: 40.4237
+        - name: lng
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+            minimum: -180
+            maximum: 180
+          example: -86.9212
+        - name: radius_m
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+          example: 2000
+        - name: severity
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/Severity"
+        - name: mine
+          in: query
+          required: false
+          description: Only return hazards the user reported.
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Hazards within the radius.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [hazards]
+                properties:
+                  hazards:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Hazard"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /hazards/{id}:
+    patch:
+      tags: [Hazards]
+      operationId: updateHazard
+      summary: Modify a hazard
+      description: |
+        Corrects a hazard's severity or marks it as not a hazard.
+
+        The screen updates right away; if the request fails, the change is
+        undone with the toast "Couldn't save change".
+      parameters:
+        - $ref: "#/components/parameters/HazardId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                severity:
+                  $ref: "#/components/schemas/Severity"
+                status:
+                  $ref: "#/components/schemas/HazardStatus"
+            examples:
+              correctSeverity:
+                value:
+                  severity: moderate
+              notAHazard:
+                value:
+                  status: removed
+      responses:
+        "200":
+          description: Hazard updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, severity, status]
+                properties:
+                  id:
+                    type: string
+                    example: h_45
+                  severity:
+                    $ref: "#/components/schemas/Severity"
+                  status:
+                    $ref: "#/components/schemas/HazardStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /me/reports:
+    get:
+      tags: [Reports]
+      operationId: listMyReports
+      summary: List my reports
+      description: |
+        Returns the user's own detections with severity and status, for the
+        Reports list and detail view.
+
+        If it is slow, a loading placeholder is shown, then "Couldn't load
+        reports" with Retry on failure. Reports still waiting to upload are
+        shown from the phone's own queue.
+      parameters:
+        - name: trip_id
+          in: query
+          required: false
+          description: Leave out for all reports.
+          schema:
+            type: string
+          example: t_9
+      responses:
+        "200":
+          description: The user's reports.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reports]
+                properties:
+                  reports:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Report"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /me/reports/{id}/image:
+    get:
+      tags: [Reports]
+      operationId: getMyReportImage
+      summary: Get a report's captured frame
+      description: |
+        The JPEG behind a report's `image_url`. It needs the same bearer token
+        as every other call, so the app's image loader must send the
+        `Authorization` header.
+      parameters:
+        - $ref: "#/components/parameters/DetectionId"
+      responses:
+        "200":
+          description: The captured frame.
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                contentMediaType: image/jpeg
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /me/reports/{id}:
+    delete:
+      tags: [Reports]
+      operationId: deleteMyReport
+      summary: Delete a report
+      description: |
+        Deletes the user's report. If it was the only sighting of that hazard,
+        the hazard is removed too (the detail view's "Not a hazard? Remove"
+        button).
+
+        If it fails, the report stays in the list with the toast "Couldn't
+        remove, try again".
+      parameters:
+        - $ref: "#/components/parameters/DetectionId"
+      responses:
+        "200":
+          description: Report deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, deleted, hazard_removed]
+                properties:
+                  id:
+                    type: string
+                    example: d_123
+                  deleted:
+                    type: boolean
+                    example: true
+                  hazard_removed:
+                    type: boolean
+                    example: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /me/settings:
+    get:
+      tags: [Settings]
+      operationId: getSettings
+      summary: Get drive settings
+      responses:
+        "200":
+          description: The user's drive settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      tags: [Settings]
+      operationId: saveSettings
+      summary: Save drive settings
+      description: |
+        Settings are saved on the phone first, so toggles take effect
+        immediately. The phone syncs them in the background and retries on
+        failure.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsInput"
+      responses:
+        "200":
+          description: Settings saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    googleIdToken:
+      type: http
+      scheme: bearer
+      bearerFormat: Google ID token
+
+  parameters:
+    DetectionId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: d_123
+    HazardId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+      example: h_45
+
+  responses:
+    BadRequest:
+      description: The request is malformed or fails validation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or invalid Google ID token.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: No resource with that id belongs to the user.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Severity:
+      type: string
+      enum: [minor, moderate, severe]
+
+    HazardStatus:
+      type: string
+      enum: [live, expired, removed]
+
+    Location:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          example: 40.4237
+        lng:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          example: -86.9212
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+    DetectionMeta:
+      type: object
+      required: [client_detection_id, captured_at, location]
+      properties:
+        client_detection_id:
+          type: string
+          description: Generated on the phone; makes retries idempotent.
+          example: 8f1c…
+        captured_at:
+          type: string
+          format: date-time
+          example: "2026-11-13T14:48:02Z"
+        location:
+          $ref: "#/components/schemas/Location"
+        heading_deg:
+          type: number
+          minimum: 0
+          exclusiveMaximum: 360
+          example: 92
+        local_confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Confidence from the on-device detector.
+          example: 0.81
+        trip_id:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |
+            Optional id the phone makes for each drive. `GET /me/reports?trip_id=`
+            filters on it for the "This trip" view.
+          example: t_9
+
+    DetectionResult:
+      type: object
+      required: [detection_id, outcome]
+      properties:
+        detection_id:
+          type: string
+          example: d_123
+        outcome:
+          type: string
+          enum: [created, matched, rejected]
+        hazard:
+          $ref: "#/components/schemas/HazardSummary"
+        undo_expires_at:
+          type: string
+          format: date-time
+          example: "2026-11-13T14:48:09Z"
+
+    HazardSummary:
+      type: object
+      required: [id, severity, lat, lng, sighting_count]
+      properties:
+        id:
+          type: string
+          example: h_45
+        severity:
+          $ref: "#/components/schemas/Severity"
+        lat:
+          type: number
+          format: double
+          example: 40.4237
+        lng:
+          type: number
+          format: double
+          example: -86.9212
+        sighting_count:
+          type: integer
+          minimum: 1
+          example: 1
+
+    Hazard:
+      type: object
+      required: [id, type, severity, lat, lng, distance_m, sighting_count, reported_by_me]
+      properties:
+        id:
+          type: string
+          example: h_45
+        type:
+          type: string
+          example: pothole
+        severity:
+          $ref: "#/components/schemas/Severity"
+        lat:
+          type: number
+          format: double
+          example: 40.4237
+        lng:
+          type: number
+          format: double
+          example: -86.9212
+        distance_m:
+          type: number
+          example: 640
+        sighting_count:
+          type: integer
+          minimum: 1
+          example: 3
+        reported_by_me:
+          type: boolean
+          example: true
+
+    Report:
+      type: object
+      required: [id, hazard_id, type, severity, captured_at, badge]
+      properties:
+        id:
+          type: string
+          example: d_123
+        hazard_id:
+          type: string
+          example: h_45
+        type:
+          type: string
+          example: pothole
+        severity:
+          $ref: "#/components/schemas/Severity"
+        location_name:
+          type: string
+          example: Oak St near 4th St
+        captured_at:
+          type: string
+          format: date-time
+          example: "2026-11-13T14:48:02Z"
+        badge:
+          type: string
+          enum: [submitted, matched, expired, pending_upload]
+        image_url:
+          type: string
+          format: uri
+
+    SettingsInput:
+      type: object
+      required: [audible_alerts, detection_enabled, suggest_reroutes]
+      properties:
+        audible_alerts:
+          type: boolean
+        detection_enabled:
+          type: boolean
+        suggest_reroutes:
+          type: boolean
+
+    Settings:
+      allOf:
+        - $ref: "#/components/schemas/SettingsInput"
+        - type: object
+          required: [updated_at]
+          properties:
+            updated_at:
+              type: string
+              format: date-time
+              example: "2026-11-13T15:02:00Z"
+
+    ClassifyHint:
+      description: Input hint for `HazardClassifier.classify(image, hint)` (Python, not HTTP).
+      type: object
+      required: [label, confidence]
+      properties:
+        label:
+          type: string
+          example: pothole
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          example: 0.81
+
+    ClassificationResult:
+      description: Return value of `HazardClassifier.classify(image, hint)` (Python, not HTTP).
+      type: object
+      required: [is_hazard, hazard_type, severity, confidence, model_id]
+      properties:
+        is_hazard:
+          type: boolean
+        hazard_type:
+          type: string
+          example: pothole
+        severity:
+          $ref: "#/components/schemas/Severity"
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          example: 0.92
+        model_id:
+          type: string
+          example: stub-0.1
