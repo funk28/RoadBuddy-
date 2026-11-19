@@ -4,7 +4,7 @@ This is the native Android application, built with Kotlin and Jetpack Compose.
 
 ## Modules
 
-- `app`: application entry point and top-level navigation.
+- `app`: application entry point, top-level navigation, and the Map tab's drive session.
 - `core/model`: shared models (drive settings, coordinates, detections).
 - `core/network`: Android side of the API contract (`DetectionApi`), with an HTTP client and an in-memory stub.
 - `core/data`: DataStore-backed settings repository, reactive behavior gates, and the navigation/detection logic (`navigation/`).
@@ -15,7 +15,15 @@ This is the native Android application, built with Kotlin and Jetpack Compose.
 
 Open this directory as a Gradle project in Android Studio with JDK 17 or later and Android SDK 37 installed. Secrets and machine-specific values belong in the ignored `secrets.properties` and `local.properties` files; do not commit credentials.
 
-The settings switches persist locally with DataStore. The Map placeholder includes an explicit drive-session control; CameraX captures rear-camera frames only while a session is active, road hazard detection is enabled, and the app is in the foreground. No hazard classifier is integrated yet, so frames are discarded locally and never uploaded. Audible alerts and rerouting are also not implemented yet.
+The settings switches persist locally with DataStore. Audible alerts and rerouting are not implemented yet.
+
+## Map tab: the drive session
+
+"Start drive session" drives the mocked campus route with simulated GPS. While it runs, **Report pothole (mock detection)** stands in for the on-device detector: it uploads a bundled pothole photo, tagged with the car's position, to `POST /v1/detections`. The "New hazard reported" card shows the severity the server returns and an Undo button for 5 s. Reports that can't be sent wait on the phone and are retried. Reaching the end of the route ends the session.
+
+Reports only go out while **Road hazard detection** is on in Settings. The rear-camera preview (CameraX) runs during a session when detection is on and camera access is allowed, but its frames aren't analyzed yet, so they are discarded and never uploaded. Camera access is optional for the mock detection.
+
+By default the app talks to the in-memory `StubDetectionApi`, so this works with no server. To use the Flask backend, see [Running against the Flask backend](#running-against-the-flask-backend).
 
 ## Navigation and detection logic (issue #38)
 
@@ -39,47 +47,21 @@ What is mocked for the prototype:
 
 The calls themselves are real: `reportPothole()` sends `POST /v1/detections` and `undo()` sends `DELETE /v1/detections/{id}` within the 5 s window. Reports that fail to send stay on the phone and are retried with the same `client_detection_id`. Use `StubDetectionApi` to demo without a server, or `HttpDetectionApi` to talk to the Flask backend (see below).
 
-```kotlin
-// In RoadBuddyApp, next to DriveSessionGate:
-val scope = rememberCoroutineScope()
-val navigationSession = remember { NavigationSession(scope, StubDetectionApi()) }
-
-// In DriveSessionScreen:
-val nav by navigationSession.state.collectAsState()
-```
+`RoadBuddyApp` creates one `NavigationSession` for the whole app, using `createDetectionApi(BuildConfig.API_BASE_URL, BuildConfig.DEV_AUTH_TOKEN)`, so a drive keeps going while another tab is open. `DriveSessionScreen` renders its state.
 
 ### Running against the Flask backend
 
-1. Start the backend as described in `backend/README.md`, with `DEV_AUTH=true` in `backend/.env`. Every `/v1` request needs `Authorization: Bearer ...`. Until Google sign-in exists, the backend accepts any `dev:<name>` token in dev mode.
-2. Point the app at it with a dev token:
+1. Start the backend as described in `backend/README.md`, with `DEV_AUTH=true`. Every `/v1` request needs `Authorization: Bearer ...`; until Google sign-in exists, dev mode accepts any `dev:<name>` token.
+2. Build the app pointed at it:
 
-   ```kotlin
-   NavigationSession(scope, HttpDetectionApi("http://10.0.2.2:5000/v1", idTokenProvider = { "dev:aiden" }))
+   ```sh
+   adb reverse tcp:5056 tcp:5056
+   ./gradlew :app:installDebug -PapiBaseUrl=http://127.0.0.1:5056/v1
    ```
 
-   `10.0.2.2` is the emulator's address for your computer. If it times out (often a firewall), run `adb reverse tcp:5000 tcp:5000` and use `http://127.0.0.1:5000/v1` instead.
-3. Allow plain `http://` in **debug builds only**, limited to those two hosts. `core:network` already adds the `INTERNET` permission. Add these to the `app` module:
+   `adb reverse` makes the emulator's `127.0.0.1:5056` reach port 5056 on your computer. `http://10.0.2.2:<port>/v1` also reaches the host from the emulator, but it is often blocked by a firewall. In Android Studio, put `apiBaseUrl=http://127.0.0.1:5056/v1` in `~/.gradle/gradle.properties` instead of passing `-P`.
+3. Debug builds send `Bearer dev:demo`. Pass `-PdevAuthToken=dev:<name>` to report as someone else. Release builds send no dev token.
 
-   `app/src/debug/res/xml/network_security_config.xml`
-
-   ```xml
-   <?xml version="1.0" encoding="utf-8"?>
-   <network-security-config>
-       <domain-config cleartextTrafficPermitted="true">
-           <domain includeSubdomains="false">10.0.2.2</domain>
-           <domain includeSubdomains="false">127.0.0.1</domain>
-           <domain includeSubdomains="false">localhost</domain>
-       </domain-config>
-   </network-security-config>
-   ```
-
-   `app/src/debug/AndroidManifest.xml`
-
-   ```xml
-   <?xml version="1.0" encoding="utf-8"?>
-   <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-       <application android:networkSecurityConfig="@xml/network_security_config" />
-   </manifest>
-   ```
+Debug builds allow plain `http://` to `10.0.2.2`, `127.0.0.1` and `localhost` only (`app/src/debug/res/xml/network_security_config.xml`). Release builds allow no cleartext.
 
 Without a token every call fails with `401 unauthorized`, and the app shows "Couldn't report hazard". The backend refuses Undo after 5 s with `409 undo_expired`, which the app shows as "Couldn't undo, remove it from My reports".

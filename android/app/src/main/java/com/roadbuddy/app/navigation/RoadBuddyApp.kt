@@ -9,6 +9,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -18,7 +19,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.roadbuddy.core.data.DriveSettingsRepository
+import com.roadbuddy.app.BuildConfig
 import com.roadbuddy.core.data.DriveSessionGate
+import com.roadbuddy.core.data.navigation.NavigationSession
+import com.roadbuddy.core.network.createDetectionApi
 import com.roadbuddy.core.ui.navigation.RoadBuddyBottomBar
 import com.roadbuddy.feature.settings.SettingsRoute
 
@@ -35,6 +39,14 @@ fun RoadBuddyApp() {
     val settingsRepository = remember(context) { DriveSettingsRepository(context) }
     val driveSessionGate = remember(settingsRepository) { DriveSessionGate(settingsRepository) }
     val driveCameraRuntime = rememberDriveCameraRuntime(driveSessionGate)
+    // One session for the whole app, so a drive keeps going while another tab is open.
+    val appScope = rememberCoroutineScope()
+    val navigationSession = remember(appScope) {
+        NavigationSession(
+            scope = appScope,
+            api = createDetectionApi(BuildConfig.API_BASE_URL, BuildConfig.DEV_AUTH_TOKEN),
+        )
+    }
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -63,7 +75,7 @@ fun RoadBuddyApp() {
             modifier = Modifier.padding(contentPadding),
         ) {
             composable(Routes.MAP) {
-                DriveSessionScreen(driveSessionGate, driveCameraRuntime)
+                DriveSessionScreen(driveSessionGate, driveCameraRuntime, navigationSession)
             }
             composable(Routes.HAZARDS) {
                 PlaceholderScreen("Hazards")
